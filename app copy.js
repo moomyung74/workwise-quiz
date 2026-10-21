@@ -1,7 +1,25 @@
+/* ---- Analytics (Supabase) ----
+   Sends anonymous events: visit, quiz_start, quiz_submit, answer (correct / wrong).
+   Settings live in config.js. Browsers that logged in on admin.html are not counted. */
+const vid = (() => {
+  try { let v = localStorage.getItem("ww_vid"); if (!v) { v = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem("ww_vid", v); } return v; }
+  catch (e) { return "anon"; }
+})();
+function send(rows) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+  try { if (localStorage.getItem("ww_dev")) return; } catch (e) {}
+  fetch(SUPABASE_URL + "/rest/v1/events", {
+    method: "POST", keepalive: true,
+    headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify(rows.map(r => ({ visitor_id: vid, ...r })))
+  }).catch(() => {});
+}
+send([{ type: "visit" }]);
+
 /* UI logic. Content lives in data.js (the DATA variable). */
 
 const $ = s => document.querySelector(s), app = $("#app");
-const norm = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d");
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\u0111/g,"d");
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const L = i => String.fromCharCode(65+i);
 const opts = q => q.type==="tf" ? ["True","False"] : q.options;
@@ -21,7 +39,7 @@ function render(){ tab==="quiz" ? (cur ? renderQuiz() : renderList()) : renderKn
 function renderList(){
   app.innerHTML = `<h2>Choose a quiz</h2><p class="sub">Each quiz is multiple choice. Submit to see your results and explanations.</p>` +
     DATA.quizzes.map(z => `<div class="card row"><div><div class="qn">${esc(z.title)}</div><div class="sub" style="margin:0">${esc(z.desc)} · ${z.questions.length} questions</div></div><button class="btn" data-id="${z.id}">Start quiz</button></div>`).join("");
-  app.querySelectorAll("[data-id]").forEach(b => b.onclick = () => { cur = DATA.quizzes.find(z => z.id===b.dataset.id); sel = []; done = false; render(); });
+  app.querySelectorAll("[data-id]").forEach(b => b.onclick = () => { cur = DATA.quizzes.find(z => z.id===b.dataset.id); sel = []; done = false; send([{ type: "quiz_start", quiz_id: cur.id }]); render(); });
 }
 
 function renderQuiz(){
@@ -52,6 +70,9 @@ function renderQuiz(){
     sel = qs.map((_,i) => [...app.querySelectorAll(`[name=q${i}]:checked`)].map(x => +x.value));
     const miss = sel.filter(s => !s.length).length;
     if (miss && !confirm(`You have ${miss} unanswered question(s). Submit anyway?`)) return;
+    const res = qs.map((q,i) => { const r = ans(q), m = sel[i]; return r.length===m.length && r.every(x => m.includes(x)); });
+    const sc = res.filter(Boolean).length;
+    send([{ type: "quiz_submit", quiz_id: cur.id, score: sc, total: qs.length }, ...res.map((c,i) => ({ type: "answer", quiz_id: cur.id, question_idx: i, correct: c }))]);
     done = true; render();
   };
 }
