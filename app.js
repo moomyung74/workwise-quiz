@@ -5,13 +5,14 @@ const vid = (() => {
   try { let v = localStorage.getItem("ww_vid"); if (!v) { v = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem("ww_vid", v); } return v; }
   catch (e) { return "anon"; }
 })();
+/* Every row must have the same keys, otherwise the database rejects the whole batch. */
 function send(rows) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;
   try { if (localStorage.getItem("ww_dev")) return; } catch (e) {}
   fetch(SUPABASE_URL + "/rest/v1/events", {
     method: "POST", keepalive: true,
     headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify(rows.map(r => ({ visitor_id: vid, ...r })))
+    body: JSON.stringify(rows.map(r => ({ visitor_id: vid, type: null, quiz_id: null, question_idx: null, correct: null, score: null, total: null, ...r })))
   }).catch(() => {});
 }
 send([{ type: "visit" }]);
@@ -56,7 +57,7 @@ function renderQuiz(){
       const mark = done ? (right.includes(j) ? `<span class="mark">✓ Correct answer</span>` : (mine.includes(j) ? `<span class="mark">✗ Your answer</span>` : "")) : "";
       return `<label class="opt ${cls}"><input type="${multi?"checkbox":"radio"}" name="q${i}" value="${j}" ${mine.includes(j)?"checked":""} ${done?"disabled":""}><span>${q.type==="tf"?"":L(j)+". "}${esc(t)}</span>${mark}</label>`;
     }).join("");
-    const fb = done ? `<div class="verdict ${ok?"ok":"bad"}" style="margin-top:12px">${ok?"✓ Correct":(mine.length?"✗ Incorrect":"✗ Not answered")}</div><div class="exp" style="margin-top:0">${esc(q.exp)}<div class="ref">Source: ${esc(q.ref)}</div></div>` : "";
+    const fb = done ? `<div class="verdict ${ok?"ok":"bad"}" style="margin-top:12px">${ok?"✓ Correct":(mine.length?"✗ Incorrect":"✗ Not answered")}</div><div class="exp" style="margin-top:0">${esc(q.exp).replace(/\n/g,"<br>")}<div class="ref">Source: ${esc(q.ref)}</div></div>` : "";
     return `<div class="card"><p class="qn">${i+1}. ${esc(q.q)}</p>${multi?`<p class="hint">Select all that apply</p>`:""}${items}${fb}</div>`;
   }).join("");
   const pct = Math.round(score/qs.length*100);
